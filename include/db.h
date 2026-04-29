@@ -13,8 +13,8 @@
 class Db {
 public:
     void upsert(const Item& item);
-    std::optional<Item> lookup(const std::string& barcode) const;
-    size_t size() const { return items_.size(); }
+    [[nodiscard]] std::optional<Item> lookup(const std::string& barcode) const;
+    [[nodiscard]] size_t size() const { return items_.size(); }
     void clear() { items_.clear(); }
 
 private:

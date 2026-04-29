@@ -2,16 +2,16 @@
 #include <cstdio>
 
 namespace {
-constexpr int TOAST_MS = 1500;
+constexpr uint32_t TOAST_MS = 1500;
 
 std::string format_known(const Item& item) {
     char buf[96];
     // "NAME  $X.XX" — OLED row is ~21 chars at a comfortable font size,
     // so keep DB names short or let the display code truncate.
-    std::snprintf(buf, sizeof(buf), "%s  $%d.%02d",
+    std::snprintf(buf, sizeof(buf), "%s  $%u.%02u",
                   item.name.c_str(),
-                  item.price_cents / 100,
-                  item.price_cents % 100);
+                  static_cast<unsigned>(item.price_cents / 100),
+                  static_cast<unsigned>(item.price_cents % 100));
     return std::string(buf);
 }
 }  // namespace
@@ -80,7 +80,7 @@ std::vector<Action> FSM::handle(const Event& e) {
                 out.push_back({ActionType::ARM_SCANNER, ""});
             }
             // BUTTON_RELEASE here is ignored (it's the trailing edge of the
-            // hold that just produced a scan). Same with other events.
+            // hold that just produced a scan). Same with other unhandled events.
             break;
         }
     }

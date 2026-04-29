@@ -24,14 +24,16 @@ Db  db;
 // Cart state. Lives in RAM for M1; M2 persists to LittleFS.
 struct CartLine {
     std::string barcode;
-    int price_cents;
-    bool pending;   // true while waiting for manual price entry
+    uint32_t    price_cents;
+    bool        pending;   // true while waiting for manual price entry
 };
 std::vector<CartLine> cart;
 
-// Non-zero when a toast is on screen; fires TOAST_TIMEOUT when millis()
-// passes this value.
-unsigned long toast_deadline_ms = 0;
+// Toast timer — stored as (start, duration) so unsigned subtraction handles
+// the ~49-day millis() wraparound correctly. Both are zero when no timer is
+// active.
+unsigned long toast_start_ms    = 0;
+unsigned long toast_duration_ms = 0;
 
 // ---- action execution -----------------------------------------------
 
@@ -51,10 +53,10 @@ void execute(const Action& a) {
             auto item = db.lookup(a.data);
             if (item) {
                 cart.push_back({a.data, item->price_cents, false});
-                Serial.printf("[ACT] cart += %s ($%d.%02d)\n",
+                Serial.printf("[ACT] cart += %s ($%u.%02u)\n",
                               item->name.c_str(),
-                              item->price_cents / 100,
-                              item->price_cents % 100);
+                              static_cast<unsigned>(item->price_cents / 100),
+                              static_cast<unsigned>(item->price_cents % 100));
             }
             break;
         }
@@ -75,25 +77,28 @@ void execute(const Action& a) {
             break;
 
         case ActionType::DISPLAY_READY: {
-            int total = 0;
-            int pending_n = 0;
+            uint32_t total     = 0;
+            int      pending_n = 0;
             for (const auto& line : cart) {
                 total += line.price_cents;
                 if (line.pending) pending_n++;
             }
-            Serial.printf("[DISPLAY] $%d.%02d  (pending: %d)\n",
-                          total / 100, total % 100, pending_n);
-            // M6: draw the idle screen on the SSD1306.
+            Serial.printf("[DISPLAY] $%u.%02u  (pending: %d)\n",
+                          static_cast<unsigned>(total / 100),
+                          static_cast<unsigned>(total % 100),
+                          pending_n);
+            // M5: draw the idle screen on the SSD1306.
             break;
         }
 
         case ActionType::DISPLAY_TOAST:
             Serial.printf("[DISPLAY] %s\n", a.data.c_str());
-            // M6: draw a centered message on the SSD1306.
+            // M5: draw a centered message on the SSD1306.
             break;
 
         case ActionType::START_TOAST_TIMER:
-            toast_deadline_ms = millis() + std::stoul(a.data);
+            toast_start_ms    = millis();
+            toast_duration_ms = std::stoul(a.data);
             break;
     }
 }
@@ -110,7 +115,13 @@ void handle_serial_command(const String& line) {
     } else if (line == "RELEASE") {
         dispatch({EventType::BUTTON_RELEASE, ""});
     } else if (line.startsWith("SCAN ")) {
-        dispatch({EventType::BARCODE_RECEIVED, line.substring(5).c_str()});
+        String barcode = line.substring(5);
+        barcode.trim();
+        if (barcode.length() == 0) {
+            Serial.println("usage: SCAN <barcode>");
+            return;
+        }
+        dispatch({EventType::BARCODE_RECEIVED, barcode.c_str()});
     } else {
         Serial.printf("unknown command: %s\n", line.c_str());
         Serial.println("valid: PRESS | RELEASE | SCAN <barcode>");
@@ -154,8 +165,10 @@ void loop() {
     }
 
     // Fire TOAST_TIMEOUT when the toast duration elapses.
-    if (toast_deadline_ms != 0 && millis() >= toast_deadline_ms) {
-        toast_deadline_ms = 0;
+    // Uses elapsed-time comparison (millis() - start) rather than a deadline
+    // so unsigned wraparound at ~49 days is handled correctly.
+    if (toast_duration_ms != 0 && millis() - toast_start_ms >= toast_duration_ms) {
+        toast_duration_ms = 0;
         dispatch({EventType::TOAST_TIMEOUT, ""});
     }
 }

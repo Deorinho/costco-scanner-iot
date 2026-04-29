@@ -1,0 +1,38 @@
+{
+    "configurations": [
+        {
+            "name": "PlatformIO",
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/src",
+                "${env:USERPROFILE}/.platformio/packages/framework-arduinoespressif32/cores/esp32",
+                "${env:USERPROFILE}/.platformio/packages/framework-arduinoespressif32/libraries/**",
+                "${env:USERPROFILE}/.platformio/packages/toolchain-riscv32-esp/riscv32-esp-elf/include/c++/**",
+                "${env:USERPROFILE}/.platformio/packages/toolchain-riscv32-esp/lib/gcc/riscv32-esp-elf/**"
+            ],
+            "defines": [
+                "ARDUINO=10816",
+                "ARDUINO_ESP32C3_DEV",
+                "ESP32",
+                "CONFIG_IDF_TARGET_ESP32C3"
+            ],
+            "compilerPath": "${env:USERPROFILE}/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-g++.exe",
+            "cStandard": "c11",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "gcc-arm",
+            "compileCommands": "${workspaceFolder}/.pio/build/esp32-c3/compile_commands.json"
+        },
+        {
+            "name": "Native (tests)",
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/src"
+            ],
+            "defines": [],
+            "cStandard": "c11",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "${default}"
+        }
+    ],
+    "version": 4
+}

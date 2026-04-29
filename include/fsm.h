@@ -23,18 +23,19 @@ class FSM {
 public:
     FSM() = default;
 
+    // Must be called before any event is dispatched.
     void set_lookup(LookupFn fn) { lookup_ = std::move(fn); }
 
     // Feed an event, get back the list of actions to perform.
     // Pure with respect to the outside world: no I/O, no globals.
     // This is what makes the FSM trivially unit-testable.
-    std::vector<Action> handle(const Event& e);
+    [[nodiscard]] std::vector<Action> handle(const Event& e);
 
-    State state() const { return state_; }
+    [[nodiscard]] State state() const { return state_; }
 
 private:
-    State state_{State::BOOT};
-    bool wifi_ready_{false};
-    bool db_ready_{false};
+    State    state_{State::BOOT};
+    bool     wifi_ready_{false};
+    bool     db_ready_{false};
     LookupFn lookup_;
 };

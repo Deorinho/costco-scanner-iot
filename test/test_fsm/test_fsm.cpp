@@ -12,7 +12,6 @@ namespace {
 FSM* fsm;
 Db*  db;
 
-// Drive the FSM from BOOT to IDLE for tests that don't care about boot.
 void boot_to_idle() {
     fsm->handle({EventType::WIFI_CONNECTED, ""});
     fsm->handle({EventType::DB_LOADED, ""});
@@ -23,9 +22,10 @@ bool has_action(const std::vector<Action>& actions, ActionType t) {
     return false;
 }
 
-const Action* find_action(const std::vector<Action>& actions, ActionType t) {
-    for (const auto& a : actions) if (a.type == t) return &a;
-    return nullptr;
+// Returns a copy so the caller doesn't hold a dangling pointer into `actions`.
+Action find_action(const std::vector<Action>& actions, ActionType t) {
+    for (const auto& a : actions) if (a.type == t) return a;
+    return {t, ""};  // sentinel — caller must check has_action first
 }
 }  // namespace
 
@@ -47,7 +47,7 @@ void tearDown(void) {
 void test_boot_needs_both_wifi_and_db(void) {
     auto out = fsm->handle({EventType::WIFI_CONNECTED, ""});
     TEST_ASSERT_EQUAL(static_cast<int>(State::BOOT), static_cast<int>(fsm->state()));
-    TEST_ASSERT_EQUAL(0, out.size());
+    TEST_ASSERT_EQUAL(0, (int)out.size());
 
     out = fsm->handle({EventType::DB_LOADED, ""});
     TEST_ASSERT_EQUAL(static_cast<int>(State::IDLE), static_cast<int>(fsm->state()));
@@ -61,6 +61,17 @@ void test_boot_order_does_not_matter(void) {
     TEST_ASSERT_EQUAL(static_cast<int>(State::IDLE), static_cast<int>(fsm->state()));
 }
 
+void test_boot_ignores_button_events(void) {
+    // Hardware might send spurious events before boot completes — ignore them.
+    auto out = fsm->handle({EventType::BUTTON_PRESS, ""});
+    TEST_ASSERT_EQUAL(static_cast<int>(State::BOOT), static_cast<int>(fsm->state()));
+    TEST_ASSERT_EQUAL(0, (int)out.size());
+
+    out = fsm->handle({EventType::BUTTON_RELEASE, ""});
+    TEST_ASSERT_EQUAL(static_cast<int>(State::BOOT), static_cast<int>(fsm->state()));
+    TEST_ASSERT_EQUAL(0, (int)out.size());
+}
+
 // ---- IDLE ------------------------------------------------------------
 
 void test_button_press_arms_scanner(void) {
@@ -68,6 +79,14 @@ void test_button_press_arms_scanner(void) {
     auto out = fsm->handle({EventType::BUTTON_PRESS, ""});
     TEST_ASSERT_EQUAL(static_cast<int>(State::SCANNING), static_cast<int>(fsm->state()));
     TEST_ASSERT_TRUE(has_action(out, ActionType::ARM_SCANNER));
+}
+
+void test_idle_ignores_barcode_without_press(void) {
+    // A barcode arriving before the button is held (e.g. scanner glitch) is dropped.
+    boot_to_idle();
+    auto out = fsm->handle({EventType::BARCODE_RECEIVED, "012345678905"});
+    TEST_ASSERT_EQUAL(static_cast<int>(State::IDLE), static_cast<int>(fsm->state()));
+    TEST_ASSERT_EQUAL(0, (int)out.size());
 }
 
 // ---- SCANNING --------------------------------------------------------
@@ -92,10 +111,10 @@ void test_known_barcode_adds_to_cart(void) {
     TEST_ASSERT_TRUE(has_action(out, ActionType::START_TOAST_TIMER));
     TEST_ASSERT_FALSE(has_action(out, ActionType::ADD_PENDING));
 
-    const Action* toast = find_action(out, ActionType::DISPLAY_TOAST);
-    TEST_ASSERT_NOT_NULL(toast);
-    TEST_ASSERT_TRUE(toast->data.find("Milk 2L") != std::string::npos);
-    TEST_ASSERT_TRUE(toast->data.find("$4.99") != std::string::npos);
+    TEST_ASSERT_TRUE(has_action(out, ActionType::DISPLAY_TOAST));
+    Action toast = find_action(out, ActionType::DISPLAY_TOAST);
+    TEST_ASSERT_TRUE(toast.data.find("Milk 2L") != std::string::npos);
+    TEST_ASSERT_TRUE(toast.data.find("$4.99") != std::string::npos);
 }
 
 void test_unknown_barcode_goes_to_pending(void) {
@@ -107,6 +126,15 @@ void test_unknown_barcode_goes_to_pending(void) {
     TEST_ASSERT_TRUE(has_action(out, ActionType::ADD_PENDING));
     TEST_ASSERT_TRUE(has_action(out, ActionType::BEEP_ERROR));
     TEST_ASSERT_FALSE(has_action(out, ActionType::ADD_TO_CART));
+}
+
+void test_scanning_ignores_extra_button_press(void) {
+    // A second BUTTON_PRESS while already scanning is a no-op.
+    boot_to_idle();
+    fsm->handle({EventType::BUTTON_PRESS, ""});
+    auto out = fsm->handle({EventType::BUTTON_PRESS, ""});
+    TEST_ASSERT_EQUAL(static_cast<int>(State::SCANNING), static_cast<int>(fsm->state()));
+    TEST_ASSERT_EQUAL(0, (int)out.size());
 }
 
 // ---- SHOWING_TOAST ---------------------------------------------------
@@ -136,10 +164,13 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_boot_needs_both_wifi_and_db);
     RUN_TEST(test_boot_order_does_not_matter);
+    RUN_TEST(test_boot_ignores_button_events);
     RUN_TEST(test_button_press_arms_scanner);
+    RUN_TEST(test_idle_ignores_barcode_without_press);
     RUN_TEST(test_button_release_without_scan_returns_to_idle);
     RUN_TEST(test_known_barcode_adds_to_cart);
     RUN_TEST(test_unknown_barcode_goes_to_pending);
+    RUN_TEST(test_scanning_ignores_extra_button_press);
     RUN_TEST(test_toast_timeout_returns_to_idle);
     RUN_TEST(test_button_press_during_toast_re_arms);
     return UNITY_END();

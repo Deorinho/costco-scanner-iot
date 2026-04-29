@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 
 // IMPORTANT: prices are integer cents. Never floats for money.
@@ -9,5 +10,5 @@
 struct Item {
     std::string barcode;
     std::string name;
-    int price_cents;
+    uint32_t    price_cents;
 };
